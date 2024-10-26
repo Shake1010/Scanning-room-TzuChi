@@ -246,41 +246,31 @@ public class ScanningRoomSystem extends Application {
             sendHttpRequest(endpoint, "POST", response -> {
                 System.out.println("Call response received: " + response);
 
-                // Assuming response is patientId, update latest number
-                Platform.runLater(() -> {
-                    // First update the latest called number
-                    updateLatestNumber(column, response);
+                try {
+                    JsonNode responseNode = OBJECT_MAPPER.readTree(response);
+                    String currentPatient = responseNode.has("currentPatient") ?
+                            responseNode.get("currentPatient").asText() : null;
 
-                    // Then immediately fetch updated queue
-                    String queueEndpoint = BASE_URL + "/row" + column;
-                    System.out.println("Fetching updated queue from: " + queueEndpoint);
-
-                    sendHttpRequest(queueEndpoint, "GET", queueResponse -> {
-                        System.out.println("Queue response received: " + queueResponse);
+                    if (currentPatient != null) {
                         Platform.runLater(() -> {
-                            // Update the display with new queue data
-                            updateQueueDisplay(column, queueResponse);
+                            updateLatestNumber(column, currentPatient);
 
-                            // Debug print current queue state
-                            JsonNode root;
-                            try {
-                                root = OBJECT_MAPPER.readTree(queueResponse);
-                                JsonNode patients = root.get("patients");
-                                if (patients != null && patients.isArray()) {
-                                    System.out.println("Current queue for column " + column + ":");
-                                    for (JsonNode patient : patients) {
-                                        System.out.println("Patient: " + patient.toString());
-                                    }
-                                }
-                            } catch (Exception e) {
-                                System.err.println("Error parsing queue response: " + e.getMessage());
-                            }
+                            // Then fetch updated queue
+                            String queueEndpoint = BASE_URL + "/row" + column;
+                            sendHttpRequest(queueEndpoint, "GET", queueResponse -> {
+                                Platform.runLater(() -> updateQueueDisplay(column, queueResponse));
+                            });
                         });
-                    });
-                });
+                    }
+                } catch (Exception e) {
+                    System.err.println("Error processing response: " + e.getMessage());
+                    Platform.runLater(() -> showError("Processing Error",
+                            "Error processing response for column " + column + ": " + e.getMessage()));
+                }
             });
         }
     }
+
 
     private void returnNumber(String button) {
         System.out.println("Return button pressed: " + button);
@@ -315,12 +305,12 @@ public class ScanningRoomSystem extends Application {
                     .timeout(Duration.ofSeconds(10));
 
             if (method.equals("POST")) {
-                requestBuilder.POST(HttpRequest.BodyPublishers.noBody());
+                requestBuilder.header("Content-Type", "application/json")
+                        .POST(HttpRequest.BodyPublishers.noBody());
             } else {
                 requestBuilder.GET();
             }
 
-            // Add debug headers
             requestBuilder.header("Accept", "application/json");
 
             HttpRequest request = requestBuilder.build();
@@ -332,7 +322,12 @@ public class ScanningRoomSystem extends Application {
                         System.out.println("Status code: " + response.statusCode());
                         System.out.println("Response body: " + response.body());
 
-                        if (response.statusCode() == 200) {
+                        if (response.statusCode() >= 200 && response.statusCode() < 300) {
+                            if (response.body() == null || response.body().isEmpty()) {
+                                Platform.runLater(() -> showError("Empty Response",
+                                        "Server returned empty response for: " + endpoint));
+                                return;
+                            }
                             responseHandler.accept(response.body());
                         } else {
                             Platform.runLater(() -> showError("API Error",
@@ -351,6 +346,8 @@ public class ScanningRoomSystem extends Application {
         } catch (Exception e) {
             System.err.println("Error creating request for " + endpoint);
             e.printStackTrace();
+            Platform.runLater(() -> showError("Request Error",
+                    "Error creating request for: " + endpoint + "\nError: " + e.getMessage()));
         }
     }
 
@@ -358,7 +355,6 @@ public class ScanningRoomSystem extends Application {
         try {
             Label label = latestNumberLabels.get(column);
             if (label != null && patientId != null) {
-                // Remove any quotes and whitespace
                 String displayId = patientId.trim().replaceAll("^\"|\"$", "");
                 if (!displayId.isEmpty()) {
                     label.setText("Latest: " + displayId);
