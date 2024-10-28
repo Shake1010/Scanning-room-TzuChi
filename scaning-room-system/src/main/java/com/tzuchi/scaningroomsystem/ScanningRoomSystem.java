@@ -235,7 +235,7 @@ public class ScanningRoomSystem extends Application {
         String endpoint = switch (column) {
             case "2" -> BASE_URL + "/call/highest";
             case "5" -> BASE_URL + "/call/nextE";
-            case "6" -> BASE_URL + "/call/nextB";
+            case "6" -> BASE_URL + "/call/nextP";
             case "8" -> BASE_URL + "/call/nextD";
             default -> "";
         };
