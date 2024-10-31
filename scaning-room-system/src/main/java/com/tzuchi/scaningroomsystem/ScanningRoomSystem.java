@@ -18,7 +18,15 @@ import java.net.http.HttpClient;
 import java.net.http.HttpRequest;
 import java.net.http.HttpResponse;
 import java.time.Duration;
+
+import javafx.stage.FileChooser;
 import java.util.*;
+import javafx.scene.media.Media;
+import javafx.scene.media.MediaPlayer;
+import javafx.scene.media.MediaView;
+import java.io.File;
+import java.util.Timer;
+import java.util.TimerTask;
 
 public class ScanningRoomSystem extends Application {
     private static final String BASE_URL = "http://localhost:8080/api";
@@ -29,6 +37,8 @@ public class ScanningRoomSystem extends Application {
 
     private final Map<String, VBox> queueDisplays = new HashMap<>();
     private final Map<String, Label> latestNumberLabels = new HashMap<>();
+    private MediaPlayer mediaPlayer;
+    private MediaView mediaView;
 
     @Override
     public void start(Stage primaryStage) {
@@ -63,18 +73,24 @@ public class ScanningRoomSystem extends Application {
         VBox videoSection = new VBox();
         videoSection.setPrefWidth(800);
         videoSection.setStyle("""
-        -fx-border-color: #2d5d7b;
-        -fx-border-width: 2;
-        -fx-background-color: #f0f0f0;
-        """);
+    -fx-border-color: #2d5d7b;
+    -fx-border-width: 2;
+    -fx-background-color: #f0f0f0;
+    """);
 
-        Label videoPlaceholder = new Label("影像顯示 / Video Display");
-        videoPlaceholder.setStyle("-fx-font-size: 20px; -fx-font-weight: bold;");
-        videoPlaceholder.setAlignment(Pos.CENTER);
-        videoPlaceholder.setMaxWidth(Double.MAX_VALUE);
-        videoPlaceholder.setMaxHeight(Double.MAX_VALUE);
-        VBox.setVgrow(videoPlaceholder, Priority.ALWAYS);
-        videoSection.getChildren().add(videoPlaceholder);
+        // Setup video components
+        mediaView = new MediaView();
+        mediaView.setFitWidth(780);
+        mediaView.setFitHeight(870);
+        mediaView.setPreserveRatio(true);
+
+        // IMPORTANT: Insert your video path here
+        String videoPath = "C:\\Users\\tina_\\Desktop\\TzuChiVideo\\【名人蔬食】甘佳鑫 茹素的力量.mp4"; // Example: "C:/Videos/myvideo.mp4" or "/Users/name/Videos/video.mp4"
+        loadAndPlayVideo(videoPath);
+
+        // Add mediaView to video section
+        videoSection.getChildren().add(mediaView);
+        videoSection.setAlignment(Pos.CENTER);
 
         mainLayout.getChildren().addAll(queuesSection, videoSection);
         HBox.setHgrow(videoSection, Priority.ALWAYS);
@@ -102,6 +118,36 @@ public class ScanningRoomSystem extends Application {
 
         startPeriodicUpdates();
     }
+
+    @Override
+    public void stop() {
+        if (mediaPlayer != null) {
+            mediaPlayer.stop();
+            mediaPlayer.dispose();
+        }
+    }
+    private void testVideoPlayback() {
+        // Replace this path with the actual path to your video file
+        String videoPath = "C:\\Users\\tina_\\Desktop\\TzuChiVideo";
+
+        // Verify file exists before trying to play it
+        File videoFile = new File(videoPath);
+        if (videoFile.exists()) {
+            loadAndPlayVideo(videoPath);
+        } else {
+            showError("Video Error", "Video file not found at: " + videoPath);
+        }
+    }
+    private void startPeriodicUpdates() {
+        Timer timer = new Timer(true);
+        timer.scheduleAtFixedRate(new TimerTask() {
+            @Override
+            public void run() {
+                updateAllQueues();
+            }
+        }, 0, 5000);  // Updates every 5 seconds
+    }
+
 
     private VBox createTopSection() {
         VBox topSection = new VBox(10);
@@ -273,18 +319,66 @@ public class ScanningRoomSystem extends Application {
 
 
     private void returnNumber(String button) {
-        System.out.println("Return button pressed: " + button);
-    }
+        String endpoint = switch (button) {
+            case "1" -> BASE_URL + "/withdraw-row2";
+            case "4" -> BASE_URL + "/withdraw-row5";
+            case "7" -> BASE_URL + "/withdraw-row8";
+            case "3" -> BASE_URL + "/withdraw-row6";
+            default -> "";
+        };
 
-    private void startPeriodicUpdates() {
-        Timer timer = new Timer(true);
-        timer.scheduleAtFixedRate(new TimerTask() {
-            @Override
-            public void run() {
-                System.out.println("Starting periodic update..."); // Debug print
-                updateAllQueues();
-            }
-        }, 0, 5000);
+        if (!endpoint.isEmpty()) {
+            // Get current queue state
+            String column = switch (button) {
+                case "1" -> "2";
+                case "4" -> "5";
+                case "7" -> "8";
+                case "3" -> "6";
+                default -> "";
+            };
+
+            String queueEndpoint = BASE_URL + "/row" + column;
+            sendHttpRequest(queueEndpoint, "GET", queueResponse -> {
+                try {
+                    JsonNode root = OBJECT_MAPPER.readTree(queueResponse);
+                    JsonNode patients = root.get("patients");
+
+                    if (patients != null && patients.isArray() && patients.size() > 0) {
+                        JsonNode firstPatient = patients.get(0);
+                        String patientId = firstPatient.has("patientId") ?
+                                firstPatient.get("patientId").asText() : "";
+
+                        if (!patientId.isEmpty()) {
+                            // Add patientId to withdraw endpoint
+                            String withdrawEndpoint = endpoint + "?patientId=" + patientId;
+                            System.out.println("Sending withdraw request to: " + withdrawEndpoint);
+
+                            // Send withdraw request
+                            sendHttpRequest(withdrawEndpoint, "PUT", withdrawResponse -> {
+                                System.out.println("Withdraw response: " + withdrawResponse);
+                                // Refresh queue display after withdrawal
+                                sendHttpRequest(queueEndpoint, "GET", finalResponse -> {
+                                    Platform.runLater(() -> {
+                                        updateQueueDisplay(column, finalResponse);
+                                        // Update latest number with previous patient
+                                        if (patients.size() > 1) {
+                                            String prevPatient = patients.get(1).get("patientId").asText();
+                                            updateLatestNumber(column, prevPatient);
+                                        } else {
+                                            updateLatestNumber(column, "-");
+                                        }
+                                    });
+                                });
+                            });
+                        }
+                    }
+                } catch (Exception e) {
+                    e.printStackTrace();
+                    Platform.runLater(() -> showError("Error",
+                            "Failed to process queue data: " + e.getMessage()));
+                }
+            });
+        }
     }
 
     private void updateAllQueues() {
@@ -302,49 +396,50 @@ public class ScanningRoomSystem extends Application {
         try {
             HttpRequest.Builder requestBuilder = HttpRequest.newBuilder()
                     .uri(URI.create(endpoint))
-                    .timeout(Duration.ofSeconds(10));
+                    .timeout(Duration.ofSeconds(10))
+                    .header("Accept", "application/json");
 
-            if (method.equals("POST")) {
-                requestBuilder.header("Content-Type", "application/json")
-                        .POST(HttpRequest.BodyPublishers.noBody());
+            if (method.equals("PUT")) {
+                requestBuilder.PUT(HttpRequest.BodyPublishers.noBody());
+            } else if (method.equals("POST")) {
+                requestBuilder.POST(HttpRequest.BodyPublishers.noBody());
             } else {
                 requestBuilder.GET();
             }
 
-            requestBuilder.header("Accept", "application/json");
-
             HttpRequest request = requestBuilder.build();
-            System.out.println("Sending " + method + " request to: " + endpoint);
+            System.out.println("Sending " + method + " request to: " + endpoint); // Debug log
 
             HTTP_CLIENT.sendAsync(request, HttpResponse.BodyHandlers.ofString())
                     .thenAccept(response -> {
-                        System.out.println(method + " response from " + endpoint);
-                        System.out.println("Status code: " + response.statusCode());
-                        System.out.println("Response body: " + response.body());
+                        System.out.println("Response status: " + response.statusCode()); // Debug log
+                        System.out.println("Response body: " + response.body()); // Debug log
 
                         if (response.statusCode() >= 200 && response.statusCode() < 300) {
-                            if (response.body() == null || response.body().isEmpty()) {
-                                Platform.runLater(() -> showError("Empty Response",
-                                        "Server returned empty response for: " + endpoint));
-                                return;
-                            }
                             responseHandler.accept(response.body());
                         } else {
-                            Platform.runLater(() -> showError("API Error",
-                                    "Request failed with status: " + response.statusCode() +
-                                            "\nEndpoint: " + endpoint +
-                                            "\nResponse: " + response.body()));
+                            Platform.runLater(() -> {
+                                try {
+                                    JsonNode errorNode = OBJECT_MAPPER.readTree(response.body());
+                                    String errorMessage = errorNode.has("message") ?
+                                            errorNode.get("message").asText() :
+                                            "Request failed with status: " + response.statusCode();
+                                    showError("API Error", errorMessage + "\nEndpoint: " + endpoint);
+                                } catch (Exception e) {
+                                    showError("API Error",
+                                            "Request failed with status: " + response.statusCode() +
+                                                    "\nEndpoint: " + endpoint);
+                                }
+                            });
                         }
                     })
                     .exceptionally(e -> {
-                        System.err.println("Request failed for " + endpoint);
                         e.printStackTrace();
                         Platform.runLater(() -> showError("Connection Error",
                                 "Failed to connect to: " + endpoint + "\nError: " + e.getMessage()));
                         return null;
                     });
         } catch (Exception e) {
-            System.err.println("Error creating request for " + endpoint);
             e.printStackTrace();
             Platform.runLater(() -> showError("Request Error",
                     "Error creating request for: " + endpoint + "\nError: " + e.getMessage()));
@@ -427,6 +522,61 @@ public class ScanningRoomSystem extends Application {
         alert.setHeaderText(null);
         alert.setContentText(message);
         alert.showAndWait();
+    }
+
+    private void setupVideoSection(VBox videoSection) {
+        try {
+            mediaView = new MediaView();
+            mediaView.setFitWidth(780); // Adjust as needed
+            mediaView.setFitHeight(870); // Adjust as needed
+            mediaView.setPreserveRatio(true);
+
+            // Replace the existing placeholder
+            videoSection.getChildren().clear();
+            videoSection.getChildren().add(mediaView);
+
+            // Center the video
+            videoSection.setAlignment(Pos.CENTER);
+        } catch (Exception e) {
+            System.err.println("Error setting up video section: " + e.getMessage());
+            e.printStackTrace();
+        }
+    }
+    public void loadAndPlayVideo(String videoPath) {
+        try {
+            // Stop any currently playing video
+            if (mediaPlayer != null) {
+                mediaPlayer.stop();
+                mediaPlayer.dispose();
+            }
+
+            // Create new Media and MediaPlayer
+            File videoFile = new File(videoPath);
+            Media media = new Media(videoFile.toURI().toString());
+            mediaPlayer = new MediaPlayer(media);
+
+            // Set the MediaPlayer to the MediaView
+            mediaView.setMediaPlayer(mediaPlayer);
+
+            // Configure player settings
+            mediaPlayer.setAutoPlay(true);
+            mediaPlayer.setCycleCount(MediaPlayer.INDEFINITE); // Loop video
+
+            // Handle errors
+            mediaPlayer.setOnError(() -> {
+                System.err.println("Media Player Error: " + mediaPlayer.getError());
+                showError("Video Playback Error",
+                        "Error playing video: " + mediaPlayer.getError().getMessage());
+            });
+
+            // Start playback
+            mediaPlayer.play();
+
+        } catch (Exception e) {
+            System.err.println("Error loading video: " + e.getMessage());
+            showError("Video Loading Error",
+                    "Error loading video file: " + e.getMessage());
+        }
     }
 
     public static void main(String[] args) {

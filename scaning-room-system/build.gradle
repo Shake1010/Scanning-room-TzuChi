@@ -9,7 +9,7 @@ repositories {
 
 javafx {
   version = '17.0.10'
-  modules = ['javafx.controls']
+  modules = ['javafx.controls', 'javafx.media']  // Added javafx.media here
 }
 
 dependencies {
