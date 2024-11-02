@@ -319,53 +319,71 @@ public class ScanningRoomSystem extends Application {
 
 
     private void returnNumber(String button) {
-        String endpoint = switch (button) {
-            case "1" -> BASE_URL + "/withdraw-row2";
-            case "4" -> BASE_URL + "/withdraw-row5";
-            case "7" -> BASE_URL + "/withdraw-row8";
-            case "3" -> BASE_URL + "/withdraw-row6";
+        String column = switch (button) {
+            case "1" -> "2";
+            case "4" -> "5";
+            case "7" -> "8";
+            case "3" -> "6";
             default -> "";
         };
 
-        if (!endpoint.isEmpty()) {
-            // Get current queue state
-            String column = switch (button) {
-                case "1" -> "2";
-                case "4" -> "5";
-                case "7" -> "8";
-                case "3" -> "6";
-                default -> "";
-            };
-
+        if (!column.isEmpty()) {
             String queueEndpoint = BASE_URL + "/row" + column;
+
+            // First get the current queue state
             sendHttpRequest(queueEndpoint, "GET", queueResponse -> {
                 try {
                     JsonNode root = OBJECT_MAPPER.readTree(queueResponse);
                     JsonNode patients = root.get("patients");
 
-                    if (patients != null && patients.isArray() && patients.size() > 0) {
-                        JsonNode firstPatient = patients.get(0);
-                        String patientId = firstPatient.has("patientId") ?
-                                firstPatient.get("patientId").asText() : "";
+                    if (patients != null && patients.isArray()) {
+                        // Find the patient with highest number that is not in queue
+                        JsonNode lastCalledPatient = null;
+                        int highestNumber = -1;
 
-                        if (!patientId.isEmpty()) {
-                            // Add patientId to withdraw endpoint
-                            String withdrawEndpoint = endpoint + "?patientId=" + patientId;
-                            System.out.println("Sending withdraw request to: " + withdrawEndpoint);
+                        for (JsonNode patient : patients) {
+                            if (!patient.get("inQueue").asBoolean()) {
+                                String patientId = patient.get("patientId").asText();
+                                // Extract number from patient ID (e.g., "P2" -> 2)
+                                int currentNumber = Integer.parseInt(patientId.substring(1));
+                                if (currentNumber > highestNumber) {
+                                    highestNumber = currentNumber;
+                                    lastCalledPatient = patient;
+                                }
+                            }
+                        }
+
+                        if (lastCalledPatient != null) {
+                            String patientId = lastCalledPatient.get("patientId").asText();
+                            String withdrawEndpoint = BASE_URL + "/withdraw-row" + column + "?patientId=" + patientId;
 
                             // Send withdraw request
                             sendHttpRequest(withdrawEndpoint, "PUT", withdrawResponse -> {
-                                System.out.println("Withdraw response: " + withdrawResponse);
                                 // Refresh queue display after withdrawal
                                 sendHttpRequest(queueEndpoint, "GET", finalResponse -> {
                                     Platform.runLater(() -> {
                                         updateQueueDisplay(column, finalResponse);
-                                        // Update latest number with previous patient
-                                        if (patients.size() > 1) {
-                                            String prevPatient = patients.get(1).get("patientId").asText();
-                                            updateLatestNumber(column, prevPatient);
-                                        } else {
-                                            updateLatestNumber(column, "-");
+                                        // Find the new latest called number
+                                        try {
+                                            JsonNode updatedRoot = OBJECT_MAPPER.readTree(finalResponse);
+                                            JsonNode updatedPatients = updatedRoot.get("patients");
+                                            if (updatedPatients != null && updatedPatients.isArray()) {
+                                                String latestId = "";
+                                                int maxNumber = -1;
+                                                for (JsonNode p : updatedPatients) {
+                                                    if (!p.get("inQueue").asBoolean()) {
+                                                        String pid = p.get("patientId").asText();
+                                                        int num = Integer.parseInt(pid.substring(1));
+                                                        if (num > maxNumber) {
+                                                            maxNumber = num;
+                                                            latestId = pid;
+                                                        }
+                                                    }
+                                                }
+                                                updateLatestNumber(column, latestId.isEmpty() ? "-" : latestId);
+                                            }
+                                        } catch (Exception e) {
+                                            e.printStackTrace();
                                         }
                                     });
                                 });
