@@ -39,6 +39,7 @@ public class ScanningRoomSystem extends Application {
     private final Map<String, Label> latestNumberLabels = new HashMap<>();
     private MediaPlayer mediaPlayer;
     private MediaView mediaView;
+    private final Map<String, Label> categoryStatsLabels = new HashMap<>();
 
     @Override
     public void start(Stage primaryStage) {
@@ -218,10 +219,10 @@ public class ScanningRoomSystem extends Application {
         display.setPrefWidth(190);
         display.setMaxHeight(Double.MAX_VALUE);
         display.setStyle("""
-        -fx-border-color: #2d5d7b;
-        -fx-border-width: 1;
-        -fx-background-color: white;
-        """);
+    -fx-border-color: #2d5d7b;
+    -fx-border-width: 1;
+    -fx-background-color: white;
+    """);
 
         Label headerLabel = new Label("Column " + column);
         headerLabel.setFont(Font.font("System", FontWeight.BOLD, 16));
@@ -240,17 +241,16 @@ public class ScanningRoomSystem extends Application {
             lineLabel.setMaxWidth(Double.MAX_VALUE);
             lineLabel.setPrefHeight(40);
 
-            // Highlight first 4 boxes
             String backgroundColor = i < 4 ? "#e6f3ff" : "white";
             lineLabel.setStyle(String.format("""
-            -fx-border-color: #cccccc;
-            -fx-border-width: 0 0 1 0;
-            -fx-padding: 10;
-            -fx-font-size: 16px;
-            -fx-font-weight: bold;
-            -fx-alignment: center;
-            -fx-background-color: %s;
-            """, backgroundColor));
+        -fx-border-color: #cccccc;
+        -fx-border-width: 0 0 1 0;
+        -fx-padding: 10;
+        -fx-font-size: 16px;
+        -fx-font-weight: bold;
+        -fx-alignment: center;
+        -fx-background-color: %s;
+        """, backgroundColor));
 
             queueList.getChildren().add(lineLabel);
         }
@@ -259,10 +259,10 @@ public class ScanningRoomSystem extends Application {
         scrollPane.setFitToWidth(true);
         scrollPane.setPrefHeight(600);
         scrollPane.setStyle("""
-        -fx-background: white;
-        -fx-background-color: white;
-        -fx-border-width: 0;
-        """);
+    -fx-background: white;
+    -fx-background-color: white;
+    -fx-border-width: 0;
+    """);
 
         Label latestLabel = new Label("Latest: -");
         latestLabel.setFont(Font.font("System", FontWeight.BOLD, 14));
@@ -272,10 +272,36 @@ public class ScanningRoomSystem extends Application {
         latestLabel.setStyle("-fx-background-color: #e8e8e8;");
         latestNumberLabels.put(column, latestLabel);
 
-        display.getChildren().addAll(headerLabel, scrollPane, latestLabel);
+        // Create statistics label
+        Label statsLabel = createStatsLabel(column);
+        categoryStatsLabels.put(column, statsLabel);
+
+        display.getChildren().addAll(headerLabel, scrollPane, latestLabel, statsLabel);
         VBox.setVgrow(scrollPane, Priority.ALWAYS);
 
         return display;
+    }
+    private Label createStatsLabel(String column) {
+        Label statsLabel = new Label(getInitialStatsText(column));
+        statsLabel.setFont(Font.font("System", FontWeight.BOLD, 14));
+        statsLabel.setMaxWidth(Double.MAX_VALUE);
+        statsLabel.setAlignment(Pos.CENTER);
+        statsLabel.setPadding(new Insets(10));
+        statsLabel.setStyle("""
+        -fx-background-color: #f5f5f5;
+        -fx-border-color: #2d5d7b;
+        -fx-border-width: 1 0 0 0;
+    """);
+        return statsLabel;
+    }
+    private String getInitialStatsText(String column) {
+        return switch (column) {
+            case "2" -> "E: 0 | A: 0 | W: 0";
+            case "5" -> "Total P: 0";
+            case "8" -> "Total D: 0";
+            case "6" -> "Total B: 0";
+            default -> "";
+        };
     }
     private void callNumber(String column) {
         String endpoint = switch (column) {
@@ -478,19 +504,23 @@ public class ScanningRoomSystem extends Application {
                     String backgroundColor = i < 4 ? "#e6f3ff" : "white";
                     label.setText("");
                     label.setStyle(String.format("""
-                    -fx-border-color: #cccccc;
-                    -fx-border-width: 0 0 1 0;
-                    -fx-padding: 10;
-                    -fx-font-size: 16px;
-                    -fx-font-weight: bold;
-                    -fx-alignment: center;
-                    -fx-background-color: %s;
-                    """, backgroundColor));
+                -fx-border-color: #cccccc;
+                -fx-border-width: 0 0 1 0;
+                -fx-padding: 10;
+                -fx-font-size: 16px;
+                -fx-font-weight: bold;
+                -fx-alignment: center;
+                -fx-background-color: %s;
+                """, backgroundColor));
                 }
             }
 
             JsonNode root = OBJECT_MAPPER.readTree(responseBody);
             JsonNode patients = root.get("patients");
+
+            // Initialize counters
+            Map<Character, Integer> categoryCounts = new HashMap<>();
+            int totalCount = 0;
 
             if (patients != null && patients.isArray()) {
                 int index = 0;
@@ -505,7 +535,30 @@ public class ScanningRoomSystem extends Application {
                         String backgroundColor = index < 4 ? "#e6f3ff" : "white";
                         label.setText(patientId);
                         index++;
+
+                        // Count patients by category
+                        if (patientId.length() > 0) {
+                            char category = patientId.charAt(0);
+                            categoryCounts.merge(category, 1, Integer::sum);
+                            totalCount++;
+                        }
                     }
+                }
+
+                // Update statistics label
+                Label statsLabel = categoryStatsLabels.get(column);
+                if (statsLabel != null) {
+                    String statsText = switch (column) {
+                        case "2" -> String.format("E: %d | A: %d | W: %d",
+                                categoryCounts.getOrDefault('E', 0),
+                                categoryCounts.getOrDefault('A', 0),
+                                categoryCounts.getOrDefault('W', 0));
+                        case "5" -> String.format("Total P: %d", categoryCounts.getOrDefault('P', 0));
+                        case "8" -> String.format("Total D: %d", categoryCounts.getOrDefault('D', 0));
+                        case "6" -> String.format("Total B: %d", categoryCounts.getOrDefault('B', 0));
+                        default -> "";
+                    };
+                    statsLabel.setText(statsText);
                 }
             }
 
@@ -577,6 +630,7 @@ public class ScanningRoomSystem extends Application {
                     "Error loading video file: " + e.getMessage());
         }
     }
+
 
     public static void main(String[] args) {
         launch(args);
