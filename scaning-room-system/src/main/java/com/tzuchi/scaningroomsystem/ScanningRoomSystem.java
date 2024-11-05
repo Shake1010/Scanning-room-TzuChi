@@ -18,6 +18,9 @@ import java.net.http.HttpClient;
 import java.net.http.HttpRequest;
 import java.net.http.HttpResponse;
 import java.time.Duration;
+// Add these imports at the top of your file
+import java.time.LocalDateTime;
+import java.time.LocalDate;
 
 import javafx.stage.FileChooser;
 import java.util.*;
@@ -272,27 +275,77 @@ public class ScanningRoomSystem extends Application {
         latestLabel.setStyle("-fx-background-color: #e8e8e8;");
         latestNumberLabels.put(column, latestLabel);
 
-        // Create statistics label
-        Label statsLabel = createStatsLabel(column);
-        categoryStatsLabels.put(column, statsLabel);
+        // Create statistics container
+        VBox statsContainer = createStatsLabel(column);
 
-        display.getChildren().addAll(headerLabel, scrollPane, latestLabel, statsLabel);
+        display.getChildren().addAll(headerLabel, scrollPane, latestLabel, statsContainer);
         VBox.setVgrow(scrollPane, Priority.ALWAYS);
 
         return display;
     }
-    private Label createStatsLabel(String column) {
-        Label statsLabel = new Label(getInitialStatsText(column));
-        statsLabel.setFont(Font.font("System", FontWeight.BOLD, 14));
-        statsLabel.setMaxWidth(Double.MAX_VALUE);
-        statsLabel.setAlignment(Pos.CENTER);
-        statsLabel.setPadding(new Insets(10));
-        statsLabel.setStyle("""
+    private VBox createStatsLabel(String column) {
+        VBox statsContainer = new VBox(5);
+        statsContainer.setMaxWidth(Double.MAX_VALUE);
+        statsContainer.setPadding(new Insets(5));
+        statsContainer.setStyle("""
         -fx-background-color: #f5f5f5;
         -fx-border-color: #2d5d7b;
         -fx-border-width: 1 0 0 0;
     """);
-        return statsLabel;
+
+        // Create labels for each statistic type
+        Label leftInScanningLabel = new Label(getInitialLeftInScanningText(column));
+        Label totalRegisteredLabel = new Label("Total Registered: 0");
+        Label totalInQueueLabel = column.equals("2") ? new Label("Total in Queue: 0") : null;
+
+        // Style the labels
+        String labelStyle = """
+        -fx-font-size: 12px;
+        -fx-font-weight: bold;
+        -fx-padding: 3;
+        -fx-background-color: white;
+        -fx-border-color: #cccccc;
+        -fx-border-width: 1;
+        -fx-background-radius: 3;
+        -fx-border-radius: 3;
+    """;
+
+        leftInScanningLabel.setStyle(labelStyle);
+        totalRegisteredLabel.setStyle(labelStyle);
+        if (totalInQueueLabel != null) {
+            totalInQueueLabel.setStyle(labelStyle);
+        }
+
+        leftInScanningLabel.setMaxWidth(Double.MAX_VALUE);
+        totalRegisteredLabel.setMaxWidth(Double.MAX_VALUE);
+        if (totalInQueueLabel != null) {
+            totalInQueueLabel.setMaxWidth(Double.MAX_VALUE);
+        }
+
+        // Add labels to the container
+        statsContainer.getChildren().add(leftInScanningLabel);
+        statsContainer.getChildren().add(totalRegisteredLabel);
+        if (totalInQueueLabel != null) {
+            statsContainer.getChildren().add(totalInQueueLabel);
+        }
+
+        // Store labels in maps for later updates
+        categoryStatsLabels.put(column + "_left", leftInScanningLabel);
+        categoryStatsLabels.put(column + "_total_registered", totalRegisteredLabel);
+        if (totalInQueueLabel != null) {
+            categoryStatsLabels.put(column + "_total_queue", totalInQueueLabel);
+        }
+
+        return statsContainer;
+    }
+    private String getInitialLeftInScanningText(String column) {
+        return switch (column) {
+            case "2" -> "Left - E: 0 | A: 0 | W: 0";
+            case "5" -> "Left P: 0";
+            case "8" -> "Left D: 0";
+            case "6" -> "Left B: 0";
+            default -> "";
+        };
     }
     private String getInitialStatsText(String column) {
         return switch (column) {
@@ -489,15 +542,13 @@ public class ScanningRoomSystem extends Application {
 
     private void updateQueueDisplay(String column, String responseBody) {
         try {
-            System.out.println("Updating display for column " + column + " with response: " + responseBody);
-
             VBox queueDisplay = queueDisplays.get(column);
             if (queueDisplay == null) return;
 
             ScrollPane scrollPane = (ScrollPane) queueDisplay.getChildren().get(1);
             VBox queueList = (VBox) scrollPane.getContent();
 
-            // Clear existing text but maintain highlight colors
+            // Reset all labels
             for (int i = 0; i < queueList.getChildren().size(); i++) {
                 if (queueList.getChildren().get(i) instanceof Label) {
                     Label label = (Label) queueList.getChildren().get(i);
@@ -519,53 +570,132 @@ public class ScanningRoomSystem extends Application {
             JsonNode patients = root.get("patients");
 
             // Initialize counters
-            Map<Character, Integer> categoryCounts = new HashMap<>();
-            int totalCount = 0;
+            Map<Character, Integer> leftInScanning = new HashMap<>();
+            Map<Character, Integer> highestNumbers = new HashMap<>();
+            int totalInQueue = 0;
 
             if (patients != null && patients.isArray()) {
                 int index = 0;
                 for (JsonNode patient : patients) {
-                    if (index >= queueList.getChildren().size()) break;
-
                     String patientId = patient.has("patientId") ? patient.get("patientId").asText() : "";
                     boolean inQueue = patient.has("inQueue") ? patient.get("inQueue").asBoolean(true) : true;
 
-                    if (!patientId.isEmpty() && inQueue) {
-                        Label label = (Label) queueList.getChildren().get(index);
-                        String backgroundColor = index < 4 ? "#e6f3ff" : "white";
-                        label.setText(patientId);
-                        index++;
+                    if (!patientId.isEmpty()) {
+                        // Update display for in-queue patients
+                        if (inQueue) {
+                            if (index < queueList.getChildren().size()) {
+                                Label label = (Label) queueList.getChildren().get(index);
+                                String backgroundColor = index < 4 ? "#e6f3ff" : "white";
+                                label.setText(patientId);
+                                index++;
+                            }
 
-                        // Count patients by category
-                        if (patientId.length() > 0) {
+                            // Count in-queue patients
                             char category = patientId.charAt(0);
-                            categoryCounts.merge(category, 1, Integer::sum);
-                            totalCount++;
+                            leftInScanning.merge(category, 1, Integer::sum);
+                            totalInQueue++;
+                        }
+
+                        // Track highest number for each category
+                        char category = patientId.charAt(0);
+                        try {
+                            int number = Integer.parseInt(patientId.substring(1));
+                            highestNumbers.merge(category, number, Integer::max);
+                        } catch (NumberFormatException e) {
+                            System.err.println("Error parsing number from patientId: " + patientId);
                         }
                     }
                 }
-
-                // Update statistics label
-                Label statsLabel = categoryStatsLabels.get(column);
-                if (statsLabel != null) {
-                    String statsText = switch (column) {
-                        case "2" -> String.format("E: %d | A: %d | W: %d",
-                                categoryCounts.getOrDefault('E', 0),
-                                categoryCounts.getOrDefault('A', 0),
-                                categoryCounts.getOrDefault('W', 0));
-                        case "5" -> String.format("Total P: %d", categoryCounts.getOrDefault('P', 0));
-                        case "8" -> String.format("Total D: %d", categoryCounts.getOrDefault('D', 0));
-                        case "6" -> String.format("Total B: %d", categoryCounts.getOrDefault('B', 0));
-                        default -> "";
-                    };
-                    statsLabel.setText(statsText);
-                }
             }
+
+            // Update statistics labels
+            updateStatisticsLabels(column, leftInScanning, totalInQueue, highestNumbers);
 
         } catch (Exception e) {
             System.err.println("Error updating display for column " + column);
-            System.err.println("Response body: " + responseBody);
             e.printStackTrace();
+        }
+    }
+    private void getRegistrationStationCount(String column) {
+        String endpoint = BASE_URL + "/get/allRegister";
+        sendHttpRequest(endpoint, "GET", response -> {
+            try {
+                JsonNode registrations = OBJECT_MAPPER.readTree(response);
+                if (registrations.isArray()) {
+                    Map<Integer, Integer> sectionCounts = new HashMap<>();
+
+                    // Get today's date at start of day for comparison
+                    LocalDateTime today = LocalDateTime.now().toLocalDate().atStartOfDay();
+
+                    // Count only today's registrations by section
+                    for (JsonNode reg : registrations) {
+                        // Parse registration timestamp
+                        LocalDateTime regTime = LocalDateTime.parse(reg.get("registeredTime").asText());
+
+                        // Only count if registration is from today
+                        if (regTime.isAfter(today) || regTime.isEqual(today)) {
+                            int section = reg.get("sectionNumber").asInt();
+                            sectionCounts.merge(section, 1, Integer::sum);
+                        }
+                    }
+
+                    // Update total registered label
+                    Platform.runLater(() -> {
+                        Label totalRegLabel = categoryStatsLabels.get(column + "_total_registered");
+                        if (totalRegLabel != null) {
+                            int sectionNumber = Integer.parseInt(column);
+                            int count = sectionCounts.getOrDefault(sectionNumber, 0);
+                            totalRegLabel.setText(String.format("Total Registered: %d", count));
+                        }
+                    });
+                }
+            } catch (Exception e) {
+                System.err.println("Error processing registration station data: " + e.getMessage());
+            }
+        });
+    }
+    private void updateStatisticsLabels(String column, Map<Character, Integer> leftInScanning,
+                                        int totalInQueue, Map<Character, Integer> highestNumbers) {
+        // Update left in scanning label
+        Label leftLabel = categoryStatsLabels.get(column + "_left");
+        if (leftLabel != null) {
+            String leftText = switch (column) {
+                case "2" -> String.format("Left - E: %d | A: %d | W: %d",
+                        leftInScanning.getOrDefault('E', 0),
+                        leftInScanning.getOrDefault('A', 0),
+                        leftInScanning.getOrDefault('W', 0));
+                case "5" -> String.format("Left P: %d", leftInScanning.getOrDefault('P', 0));
+                case "8" -> String.format("Left D: %d", leftInScanning.getOrDefault('D', 0));
+                case "6" -> String.format("Left B: %d", leftInScanning.getOrDefault('B', 0));
+                default -> "";
+            };
+            leftLabel.setText(leftText);
+        }
+
+        // Update total registered label
+        Label totalRegLabel = categoryStatsLabels.get(column + "_total_registered");
+        if (totalRegLabel != null) {
+            int totalRegistered = switch (column) {
+                case "2" -> {
+                    int eTotal = highestNumbers.getOrDefault('E', 0);
+                    int aTotal = highestNumbers.getOrDefault('A', 0);
+                    int wTotal = highestNumbers.getOrDefault('W', 0);
+                    yield eTotal + aTotal + wTotal;
+                }
+                case "5" -> highestNumbers.getOrDefault('P', 0);
+                case "8" -> highestNumbers.getOrDefault('D', 0);
+                case "6" -> highestNumbers.getOrDefault('B', 0);
+                default -> 0;
+            };
+            totalRegLabel.setText(String.format("Total Registered: %d", totalRegistered));
+        }
+
+        // Update total in queue label (only for column 2)
+        if (column.equals("2")) {
+            Label totalQueueLabel = categoryStatsLabels.get(column + "_total_queue");
+            if (totalQueueLabel != null) {
+                totalQueueLabel.setText(String.format("Total in Queue: %d", totalInQueue));
+            }
         }
     }
     private void showError(String title, String message) {
