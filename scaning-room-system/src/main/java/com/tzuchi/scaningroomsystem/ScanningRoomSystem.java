@@ -12,6 +12,8 @@ import javafx.scene.text.Font;
 import javafx.scene.text.FontWeight;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.fasterxml.jackson.databind.JsonNode;
+import com.tzuchi.scaningroomsystem.AudioAnnouncementService;
+
 
 import java.net.URI;
 import java.net.http.HttpClient;
@@ -31,12 +33,16 @@ import java.io.File;
 import java.util.Timer;
 import java.util.TimerTask;
 
+import java.util.concurrent.CompletableFuture;
+
 public class ScanningRoomSystem extends Application {
     private static final String BASE_URL = "http://localhost:8080/api";
     private static final HttpClient HTTP_CLIENT = HttpClient.newBuilder()
             .connectTimeout(Duration.ofSeconds(10))
             .build();
     private static final ObjectMapper OBJECT_MAPPER = new ObjectMapper();
+    private final AudioAnnouncementService audioService = new AudioAnnouncementService();
+
 
     private final Map<String, VBox> queueDisplays = new HashMap<>();
     private final Map<String, Label> latestNumberLabels = new HashMap<>();
@@ -129,6 +135,7 @@ public class ScanningRoomSystem extends Application {
             mediaPlayer.stop();
             mediaPlayer.dispose();
         }
+        audioService.stop();
     }
     private void testVideoPlayback() {
         // Replace this path with the actual path to your video file
@@ -379,7 +386,7 @@ public class ScanningRoomSystem extends Application {
                     if (currentPatient != null) {
                         Platform.runLater(() -> {
                             updateLatestNumber(column, currentPatient);
-
+                            audioService.announceNumber(currentPatient);
                             // Then fetch updated queue
                             String queueEndpoint = BASE_URL + "/row" + column;
                             sendHttpRequest(queueEndpoint, "GET", queueResponse -> {
@@ -743,6 +750,7 @@ public class ScanningRoomSystem extends Application {
             // Configure player settings
             mediaPlayer.setAutoPlay(true);
             mediaPlayer.setCycleCount(MediaPlayer.INDEFINITE); // Loop video
+            mediaPlayer.setMute(true);  // Add this line to mute the video
 
             // Handle errors
             mediaPlayer.setOnError(() -> {
@@ -760,6 +768,7 @@ public class ScanningRoomSystem extends Application {
                     "Error loading video file: " + e.getMessage());
         }
     }
+
 
 
     public static void main(String[] args) {
