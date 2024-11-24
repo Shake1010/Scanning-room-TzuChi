@@ -37,6 +37,8 @@ import java.util.concurrent.CompletableFuture;
 
 public class ScanningRoomSystem extends Application {
     private static final String BASE_URL = "http://localhost:8080/api";
+
+    //private static final String BASE_URL = "http://172.104.124.175:8888/TzuChiQueueingSystem-0.0.1-SNAPSHOT/api";
     private static final HttpClient HTTP_CLIENT = HttpClient.newBuilder()
             .connectTimeout(Duration.ofSeconds(10))
             .build();
@@ -49,84 +51,16 @@ public class ScanningRoomSystem extends Application {
     private MediaPlayer mediaPlayer;
     private MediaView mediaView;
     private final Map<String, Label> categoryStatsLabels = new HashMap<>();
+    private Stage primaryStage;
 
     @Override
     public void start(Stage primaryStage) {
         primaryStage.setTitle("Tzu Chi Scanning Room System");
-
+        this.primaryStage = primaryStage;
+        primaryStage.setTitle("Tzu Chi Scanning Room System");
+        showLoginScene();
         // Main horizontal layout
-        HBox mainLayout = new HBox(10);
-        mainLayout.setPadding(new Insets(10));
-        mainLayout.setStyle("-fx-background-color: white;");
 
-        // Left section for queues
-        VBox queuesSection = new VBox(10);
-        queuesSection.setPrefWidth(800);
-        queuesSection.setMaxHeight(Double.MAX_VALUE);
-
-        // Queue displays container
-        HBox queueDisplaysContainer = new HBox(5);
-        queueDisplaysContainer.setAlignment(Pos.TOP_CENTER);
-
-        // Add queue displays
-        String[] columns = {"2", "5", "8", "6"};
-        for (String column : columns) {
-            VBox queueDisplay = createQueueDisplay(column);
-            queueDisplays.put(column, queueDisplay);
-            queueDisplaysContainer.getChildren().add(queueDisplay);
-            HBox.setHgrow(queueDisplay, Priority.ALWAYS);
-        }
-
-        queuesSection.getChildren().add(queueDisplaysContainer);
-
-        // Right section for video
-        VBox videoSection = new VBox();
-        videoSection.setPrefWidth(800);
-        videoSection.setStyle("""
-    -fx-border-color: #2d5d7b;
-    -fx-border-width: 2;
-    -fx-background-color: #f0f0f0;
-    """);
-
-        // Setup video components
-        mediaView = new MediaView();
-        mediaView.setFitWidth(780);
-        mediaView.setFitHeight(870);
-        mediaView.setPreserveRatio(true);
-
-        // IMPORTANT: Insert your video path here
-        String videoPath = "C:\\Users\\tina_\\Desktop\\TzuChiVideo\\【名人蔬食】甘佳鑫 茹素的力量.mp4"; // Example: "C:/Videos/myvideo.mp4" or "/Users/name/Videos/video.mp4"
-        loadAndPlayVideo(videoPath);
-
-        // Add mediaView to video section
-        videoSection.getChildren().add(mediaView);
-        videoSection.setAlignment(Pos.CENTER);
-
-        mainLayout.getChildren().addAll(queuesSection, videoSection);
-        HBox.setHgrow(videoSection, Priority.ALWAYS);
-
-        Scene scene = new Scene(mainLayout, 1600, 900);
-
-        // Add keyboard event handling
-        scene.setOnKeyPressed(event -> {
-            switch (event.getCode()) {
-                case NUMPAD2 -> callNumber("2");
-                case NUMPAD5 -> callNumber("5");
-                case NUMPAD8 -> callNumber("8");
-                case NUMPAD6 -> callNumber("6");
-                case NUMPAD1 -> returnNumber("1");
-                case NUMPAD4 -> returnNumber("4");
-                case NUMPAD7 -> returnNumber("7");
-                case NUMPAD3 -> returnNumber("3");
-                default -> {}
-            }
-        });
-
-        primaryStage.setMaximized(true);
-        primaryStage.setScene(scene);
-        primaryStage.show();
-
-        startPeriodicUpdates();
     }
 
     @Override
@@ -344,6 +278,145 @@ public class ScanningRoomSystem extends Application {
         }
 
         return statsContainer;
+    }
+    private void showLoginScene() {
+        VBox loginLayout = new VBox(10);
+        loginLayout.setPadding(new Insets(10));
+        loginLayout.setAlignment(Pos.CENTER);
+
+        Label titleLabel = new Label("Login");
+        titleLabel.setFont(Font.font("System", FontWeight.BOLD, 20));
+
+        TextField usernameField = new TextField();
+        usernameField.setPromptText("Username");
+
+        PasswordField passwordField = new PasswordField();
+        passwordField.setPromptText("Password");
+
+        Button loginButton = new Button("Login");
+        Label messageLabel = new Label();
+        messageLabel.setStyle("-fx-text-fill: red;");
+
+        loginButton.setOnAction(e -> authenticateUser(usernameField.getText(), passwordField.getText(), messageLabel));
+
+        loginLayout.getChildren().addAll(titleLabel, usernameField, passwordField, loginButton, messageLabel);
+
+        Scene loginScene = new Scene(loginLayout, 300, 200);
+        primaryStage.setScene(loginScene);
+        primaryStage.show();
+    }
+    private void authenticateUser(String username, String password, Label messageLabel) {
+        if (username.isEmpty() || password.isEmpty()) {
+            messageLabel.setText("Please fill in both fields.");
+            return;
+        }
+
+        String endpoint = BASE_URL + "/auth/login";
+        Map<String, String> requestBody = new HashMap<>();
+        requestBody.put("username", username);
+        requestBody.put("password", password);
+
+        try {
+            String jsonBody = OBJECT_MAPPER.writeValueAsString(requestBody);
+
+            HttpRequest request = HttpRequest.newBuilder()
+                    .uri(URI.create(endpoint))
+                    .header("Content-Type", "application/json")
+                    .POST(HttpRequest.BodyPublishers.ofString(jsonBody))
+                    .build();
+
+            HTTP_CLIENT.sendAsync(request, HttpResponse.BodyHandlers.ofString())
+                    .thenApply(HttpResponse::body)
+                    .thenAccept(responseBody -> {
+                        if (responseBody.equalsIgnoreCase("Login Successful")) {
+                            Platform.runLater(this::showMainScene); // Show main scene on successful login
+                        } else {
+                            Platform.runLater(() -> messageLabel.setText("Invalid username or password."));
+                        }
+                    })
+                    .exceptionally(e -> {
+                        Platform.runLater(() -> messageLabel.setText("Error connecting to server."));
+                        return null;
+                    });
+        } catch (Exception e) {
+            messageLabel.setText("Error: " + e.getMessage());
+        }
+    }
+
+    private void showMainScene() {
+        HBox mainLayout = new HBox(10);
+        mainLayout.setPadding(new Insets(10));
+        mainLayout.setStyle("-fx-background-color: white;");
+
+
+        // Left section for queues
+        VBox queuesSection = new VBox(10);
+        queuesSection.setPrefWidth(800);
+        queuesSection.setMaxHeight(Double.MAX_VALUE);
+
+        // Queue displays container
+        HBox queueDisplaysContainer = new HBox(5);
+        queueDisplaysContainer.setAlignment(Pos.TOP_CENTER);
+
+        // Add queue displays
+        String[] columns = {"2", "5", "8", "6"};
+        for (String column : columns) {
+            VBox queueDisplay = createQueueDisplay(column);
+            queueDisplays.put(column, queueDisplay);
+            queueDisplaysContainer.getChildren().add(queueDisplay);
+            HBox.setHgrow(queueDisplay, Priority.ALWAYS);
+        }
+
+        queuesSection.getChildren().add(queueDisplaysContainer);
+
+        // Right section for video
+        VBox videoSection = new VBox();
+        videoSection.setPrefWidth(800);
+        videoSection.setStyle("""
+    -fx-border-color: #2d5d7b;
+    -fx-border-width: 2;
+    -fx-background-color: #f0f0f0;
+    """);
+
+        // Setup video components
+        mediaView = new MediaView();
+        mediaView.setFitWidth(780);
+        mediaView.setFitHeight(870);
+        mediaView.setPreserveRatio(true);
+
+        // IMPORTANT: Insert your video path here
+        String videoPath = "C:\\Users\\tina_\\Desktop\\TzuChiVideo\\【名人蔬食】甘佳鑫 茹素的力量.mp4"; // Example: "C:/Videos/myvideo.mp4" or "/Users/name/Videos/video.mp4"
+        loadAndPlayVideo(videoPath);
+
+        // Add mediaView to video section
+        videoSection.getChildren().add(mediaView);
+        videoSection.setAlignment(Pos.CENTER);
+
+        mainLayout.getChildren().addAll(queuesSection, videoSection);
+        HBox.setHgrow(videoSection, Priority.ALWAYS);
+
+        Scene scene = new Scene(mainLayout, 1600, 900);
+
+        // Add keyboard event handling
+        scene.setOnKeyPressed(event -> {
+            switch (event.getCode()) {
+                case NUMPAD2 -> callNumber("2");
+                case NUMPAD5 -> callNumber("5");
+                case NUMPAD8 -> callNumber("8");
+                case NUMPAD6 -> callNumber("6");
+                case NUMPAD1 -> returnNumber("1");
+                case NUMPAD4 -> returnNumber("4");
+                case NUMPAD7 -> returnNumber("7");
+                case NUMPAD3 -> returnNumber("3");
+                default -> {}
+            }
+        });
+
+        primaryStage.setMaximized(true);
+        primaryStage.setScene(scene);
+        primaryStage.show();
+
+        startPeriodicUpdates();
     }
     private String getInitialLeftInScanningText(String column) {
         return switch (column) {
