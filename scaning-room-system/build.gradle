@@ -1,20 +1,30 @@
 plugins {
   id 'application'
   id 'org.openjfx.javafxplugin' version '0.0.13'
-  id 'org.beryx.jlink' version '2.25.0' // Required for jlink support
+  id 'org.beryx.jlink' version '2.25.0'
 }
 
 repositories {
   mavenCentral()
 }
 
+ext {
+  javaFxVersion = '17.0.10'
+}
+
 javafx {
-  version = '17.0.10'
-  modules = ['javafx.controls', 'javafx.media']  // Added javafx.media here
+  version = javaFxVersion
+  modules = ['javafx.controls', 'javafx.media']
 }
 
 dependencies {
   implementation 'com.fasterxml.jackson.core:jackson-databind:2.13.0'
+
+  // Explicitly add JavaFX dependencies
+  implementation "org.openjfx:javafx-base:${javaFxVersion}:win"
+  implementation "org.openjfx:javafx-graphics:${javaFxVersion}:win"
+  implementation "org.openjfx:javafx-controls:${javaFxVersion}:win"
+  implementation "org.openjfx:javafx-media:${javaFxVersion}:win"
 }
 
 application {
@@ -24,6 +34,74 @@ application {
 
 tasks.withType(JavaCompile) {
   options.encoding = 'UTF-8'
+  options.compilerArgs += [
+          '--module-path', classpath.asPath
+  ]
 }
 
+jlink {
+  options = ['--strip-debug', '--compress', '2', '--no-header-files', '--no-man-pages']
+  addOptions('--bind-services')
+  forceMerge('jackson')
 
+  launcher {
+    name = 'ScanningRoomSystem'
+    jvmArgs = ['-Xms128m', '-Xmx512m']
+  }
+
+  mergedModule {
+    requires('java.base')
+    requires('java.desktop')
+    requires('java.net.http')
+
+    // Don't include these in mergedModule since they'll be added by the module path
+    // requires('javafx.base')
+    // requires('javafx.graphics')
+    // requires('javafx.controls')
+    // requires('javafx.media')
+  }
+
+  jpackage {
+    // Image options
+    installerType = 'msi'
+    outputDir = 'installer'
+    imageName = 'ScanningRoomSystem'
+    skipInstaller = false
+
+    // Installer options
+    installerName = 'ScanningRoomSystem'
+    installerOptions = [
+            '--win-dir-chooser',
+            '--win-menu',
+            '--win-shortcut',
+            '--win-per-user-install',
+            '--verbose'
+    ]
+
+    // App info
+    appVersion = '1.0.0'
+    vendor = 'TzuChi'
+//    copyright = '2024 TzuChi'
+
+    // JVM options
+    jvmArgs = ['-Xms128m', '-Xmx512m']
+  }
+}
+
+// Make sure module-info.java is properly set
+tasks.compileJava {
+  inputs.property('moduleName', application.mainModule)
+  options.compilerArgs = [
+          '--module-path', classpath.asPath
+  ]
+}
+
+// Optional: Add a task to clean the installer directory
+task cleanInstaller(type: Delete) {
+  delete "${buildDir}/installer"
+}
+
+// Make jpackage task depend on cleaning installer directory
+tasks.named('jpackage').configure {
+  dependsOn(cleanInstaller)
+}

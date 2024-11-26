@@ -36,9 +36,9 @@ import java.util.TimerTask;
 import java.util.concurrent.CompletableFuture;
 
 public class ScanningRoomSystem extends Application {
-    private static final String BASE_URL = "http://localhost:8080/api";
+    //private static final String BASE_URL = "http://localhost:8080/api";
 
-    //private static final String BASE_URL = "http://172.104.124.175:8888/TzuChiQueueingSystem-0.0.1-SNAPSHOT/api";
+    private static final String BASE_URL = "http://172.104.124.175:8888/TzuChiQueueingSystem-0.0.1-SNAPSHOT/api";
     private static final HttpClient HTTP_CLIENT = HttpClient.newBuilder()
             .connectTimeout(Duration.ofSeconds(10))
             .build();
@@ -386,7 +386,7 @@ public class ScanningRoomSystem extends Application {
 
         // IMPORTANT: Insert your video path here
         String videoPath = "C:\\Users\\tina_\\Desktop\\TzuChiVideo\\【名人蔬食】甘佳鑫 茹素的力量.mp4"; // Example: "C:/Videos/myvideo.mp4" or "/Users/name/Videos/video.mp4"
-        loadAndPlayVideo(videoPath);
+        //loadAndPlayVideo(videoPath);//todo
 
         // Add mediaView to video section
         videoSection.getChildren().add(mediaView);
