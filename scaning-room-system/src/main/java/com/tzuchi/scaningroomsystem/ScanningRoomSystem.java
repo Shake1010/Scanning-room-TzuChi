@@ -37,9 +37,9 @@ import java.util.TimerTask;
 import java.util.concurrent.CompletableFuture;
 
 public class ScanningRoomSystem extends Application {
-    //private static final String BASE_URL = "http://localhost:8080/api";
+    private static final String BASE_URL = "http://localhost:8080/api";
 
-    private static final String BASE_URL = "http://172.104.124.175:8888/TzuChiQueueingSystem-0.0.1-SNAPSHOT/api";
+//    private static final String BASE_URL = "http://172.104.124.175:8888/TzuChiQueueingSystem-0.0.1-SNAPSHOT/api";
     private static final HttpClient HTTP_CLIENT = HttpClient.newBuilder()
             .connectTimeout(Duration.ofSeconds(10))
             .build();
@@ -348,73 +348,277 @@ public class ScanningRoomSystem extends Application {
         // Get screen dimensions
         javafx.geometry.Rectangle2D screenBounds = Screen.getPrimary().getVisualBounds();
 
-        // Main horizontal layout with proportional spacing
+        // Create main container
+        VBox root = new VBox();
+        root.setPrefSize(screenBounds.getWidth(), screenBounds.getHeight());
+        root.setStyle("-fx-background-color: white;");
+
+        // Create header
+        HBox header = createHeader();
+        root.getChildren().add(header);
+
+        // Main content area
         HBox mainLayout = new HBox();
-        mainLayout.setSpacing(screenBounds.getWidth() * 0.01); // 1% of screen width for spacing
-        mainLayout.setPadding(new Insets(screenBounds.getHeight() * 0.01)); // 1% of screen height for padding
-        mainLayout.setStyle("-fx-background-color: white;");
+        mainLayout.setSpacing(10);
+        mainLayout.setPadding(new Insets(10));
+        mainLayout.setPrefSize(screenBounds.getWidth(), screenBounds.getHeight() - 80);
 
-        // Left section for queues with proportional width
-        VBox queuesSection = new VBox(screenBounds.getHeight() * 0.01); // 1% of screen height for spacing
-        queuesSection.prefWidthProperty().bind(mainLayout.widthProperty().multiply(0.5)); // 50% of main layout
-        queuesSection.setMaxHeight(Double.MAX_VALUE);
-
-        // Queue displays container
-        HBox queueDisplaysContainer = new HBox(screenBounds.getWidth() * 0.005); // 0.5% of screen width spacing
+        // Left section for queues - now 45% of width
+        HBox queueDisplaysContainer = new HBox(10);
         queueDisplaysContainer.setAlignment(Pos.TOP_CENTER);
+        queueDisplaysContainer.prefWidthProperty().bind(mainLayout.widthProperty().multiply(0.45));
 
         // Add queue displays
         String[] columns = {"2", "5", "8", "6"};
         for (String column : columns) {
-            VBox queueDisplay = createQueueDisplay(column);
-            queueDisplay.prefWidthProperty().bind(queuesSection.widthProperty().multiply(0.24)); // Each takes ~24% of queue section
+            VBox queueDisplay = createEnhancedQueueDisplay(column);
+            // Each column takes 24% of the queue section width, leaving 1% spacing between columns
+            queueDisplay.prefWidthProperty().bind(queueDisplaysContainer.widthProperty().multiply(0.24));
             queueDisplays.put(column, queueDisplay);
             queueDisplaysContainer.getChildren().add(queueDisplay);
-            HBox.setHgrow(queueDisplay, Priority.ALWAYS);
         }
 
-        queuesSection.getChildren().add(queueDisplaysContainer);
-        VBox.setVgrow(queueDisplaysContainer, Priority.ALWAYS);
-
-        // Right section for video with proportional width
+        // Right section for video - now 55% of width
         VBox videoSection = new VBox();
-        videoSection.prefWidthProperty().bind(mainLayout.widthProperty().multiply(0.5)); // 50% of main layout
+        videoSection.prefWidthProperty().bind(mainLayout.widthProperty().multiply(0.55));
         videoSection.setStyle("""
-        -fx-border-color: #2d5d7b;
-        -fx-border-width: 2;
+        -fx-border-color: rgb(22, 38, 74);
+        -fx-border-width: 1;
         -fx-background-color: #f0f0f0;
+        -fx-min-height: 400;
         """);
 
-        // Setup responsive video components
+        // Setup video view with better sizing
         mediaView = new MediaView();
-        mediaView.fitWidthProperty().bind(videoSection.widthProperty().multiply(0.95));  // 95% of video section width
-        mediaView.fitHeightProperty().bind(videoSection.heightProperty().multiply(0.95)); // 95% of video section height
+        mediaView.fitWidthProperty().bind(videoSection.widthProperty().multiply(0.95));
+        mediaView.fitHeightProperty().bind(videoSection.heightProperty().multiply(0.95));
         mediaView.setPreserveRatio(true);
 
-        // IMPORTANT: Insert your video path here
-        String videoPath = "C:\\Users\\tina_\\Desktop\\TzuChiVideo\\【名人蔬食】甘佳鑫 茹素的力量.mp4";
-        File videoFile = new File(videoPath);
-        if (videoFile.exists()) {
-            //loadAndPlayVideo(videoPath);//todo
-        }
-
-        // Add mediaView to video section
         videoSection.getChildren().add(mediaView);
         videoSection.setAlignment(Pos.CENTER);
 
-        // Add both sections to main layout
-        mainLayout.getChildren().addAll(queuesSection, videoSection);
-        HBox.setHgrow(videoSection, Priority.ALWAYS);
+        // Add all sections to main layout
+        mainLayout.getChildren().addAll(queueDisplaysContainer, videoSection);
+        root.getChildren().add(mainLayout);
+        VBox.setVgrow(mainLayout, Priority.ALWAYS);
 
-        // Create scene and add keyboard handling
-        Scene scene = new Scene(mainLayout);
+        // Create scene
+        Scene scene = new Scene(root);
+        setupKeyboardHandling(scene);
+
+        // Configure stage to start maximized
+        primaryStage.setScene(scene);
+        primaryStage.setMaximized(true);
+        primaryStage.show();
+
+        // Start periodic updates
+        startPeriodicUpdates();
+    }
+
+
+
+    private HBox createHeader() {
+        HBox header = new HBox();
+        header.setStyle("""
+        -fx-background-color: rgb(22, 38, 74);
+        -fx-padding: 15 20;
+        -fx-spacing: 20;
+        -fx-min-height: 80;
+        """);
+        header.setAlignment(Pos.CENTER_LEFT);
+
+        Label logoText = new Label("TC");
+        logoText.setStyle("""
+        -fx-text-fill: white;
+        -fx-font-size: 28;
+        -fx-font-weight: bold;
+        -fx-min-width: 60;
+        -fx-alignment: center;
+        """);
+
+        VBox titleBox = new VBox(5);
+        Label mainTitle = new Label("SCREENING ROOM");
+        mainTitle.setStyle("""
+        -fx-font-size: 24;
+        -fx-font-weight: bold;
+        -fx-text-fill: white;
+        """);
+        Label subTitle = new Label("SYSTEM");
+        subTitle.setStyle("""
+        -fx-font-size: 18;
+        -fx-text-fill: white;
+        """);
+        titleBox.getChildren().addAll(mainTitle, subTitle);
+
+        header.getChildren().addAll(logoText, titleBox);
+        return header;
+    }
+
+    private VBox createEnhancedQueueDisplay(String column) {
+        VBox display = new VBox();
+        display.setStyle("""
+        -fx-background-color: white;
+        -fx-border-color: rgb(22, 38, 74);
+        -fx-border-width: 1;
+        -fx-border-radius: 5 5 0 0;
+        """);
+
+        // Header that extends full width
+        StackPane headerPane = new StackPane();
+        headerPane.setStyle("""
+        -fx-background-color: rgb(22, 38, 74);
+        -fx-padding: 10;
+        -fx-min-height: 45;
+        """);
+        headerPane.prefWidthProperty().bind(display.widthProperty());
+
+        Label headerLabel = new Label("Column " + column);
+        headerLabel.setStyle("""
+        -fx-text-fill: white;
+        -fx-font-size: 16;
+        -fx-font-weight: bold;
+        """);
+        headerPane.getChildren().add(headerLabel);
+
+        // Queue list with light blue background for first 4 items
+        VBox queueList = new VBox();
+        for (int i = 0; i < 300; i++) {
+            Label lineLabel = new Label("");
+            lineLabel.prefWidthProperty().bind(display.widthProperty());
+            lineLabel.setMinHeight(40);
+
+            String backgroundColor = i < 4 ? "#e6f3ff" : "white";
+            lineLabel.setStyle(String.format("""
+            -fx-padding: 10;
+            -fx-font-size: 16;
+            -fx-font-weight: bold;
+            -fx-alignment: center;
+            -fx-border-color: #e0e0e0;
+            -fx-border-width: 0 0 1 0;
+            -fx-background-color: %s;
+            """, backgroundColor));
+
+            queueList.getChildren().add(lineLabel);
+        }
+
+        // Scroll pane with proper sizing
+        ScrollPane scrollPane = new ScrollPane(queueList);
+        scrollPane.setFitToWidth(true);
+        scrollPane.setPrefHeight(600);
+        scrollPane.setStyle("""
+        -fx-background: white;
+        -fx-background-color: white;
+        -fx-border-width: 0;
+        """);
+
+        // Latest number label
+        Label latestLabel = new Label("Latest: -");
+        latestLabel.setStyle("""
+        -fx-padding: 10;
+        -fx-font-size: 14;
+        -fx-font-weight: bold;
+        -fx-background-color: #f5f5f5;
+        -fx-border-color: #e0e0e0;
+        -fx-border-width: 1 0;
+        -fx-alignment: center;
+        """);
+        latestLabel.prefWidthProperty().bind(display.widthProperty());
+        latestNumberLabels.put(column, latestLabel);
+
+        // Stats container with full width
+        VBox statsContainer = createStatsLabel(column);
+        statsContainer.prefWidthProperty().bind(display.widthProperty());
+
+        display.getChildren().addAll(headerPane, scrollPane, latestLabel, statsContainer);
+        VBox.setVgrow(scrollPane, Priority.ALWAYS);
+
+        return display;
+    }
+
+    private VBox createQueueList() {
+        VBox queueList = new VBox(0);
+        queueList.setAlignment(Pos.TOP_CENTER);
+        queueList.setStyle("-fx-background-color: white;");
+
+        // Pre-create empty line labels
+        for (int i = 0; i < 300; i++) {
+            Label lineLabel = new Label("");
+            lineLabel.setMaxWidth(Double.MAX_VALUE);
+            lineLabel.setPrefHeight(40);
+
+            String backgroundColor = i < 4 ? "#e6f3ff" : "white";
+            lineLabel.setStyle(String.format("""
+            -fx-border-color: #cccccc;
+            -fx-border-width: 0 0 1 0;
+            -fx-padding: 10;
+            -fx-font-size: 16px;
+            -fx-font-weight: bold;
+            -fx-alignment: center;
+            -fx-background-color: %s;
+        """, backgroundColor));
+
+            queueList.getChildren().add(lineLabel);
+        }
+
+        return queueList;
+    }
+
+    private ScrollPane createScrollPane(VBox content) {
+        ScrollPane scrollPane = new ScrollPane(content);
+        scrollPane.setFitToWidth(true);
+        scrollPane.setPrefHeight(600);
+        scrollPane.setStyle("""
+        -fx-background: white;
+        -fx-background-color: white;
+        -fx-border-width: 0;
+        -fx-padding: 0;
+    """);
+        return scrollPane;
+    }
+
+    private Label createLatestLabel() {
+        Label label = new Label("Latest: -");
+        label.setStyle("""
+        -fx-font-size: 14px;
+        -fx-font-weight: bold;
+        -fx-padding: 10;
+        -fx-background-color: #f8f9fa;
+        -fx-border-color: #e0e0e0;
+        -fx-border-width: 1 0;
+        -fx-alignment: center;
+        -fx-max-width: infinity;
+    """);
+        return label;
+    }
+    private VBox createVideoSection() {
+        VBox videoSection = new VBox();
+        videoSection.setStyle("""
+        -fx-border-color: rgb(22, 38, 74);
+        -fx-border-width: 1;
+        -fx-border-radius: 5;
+        -fx-background-color: #f8f9fa;
+        -fx-effect: dropshadow(gaussian, rgba(0,0,0,0.1), 8, 0, 0, 1);
+        """);
+
+        mediaView = new MediaView();
+        mediaView.fitWidthProperty().bind(videoSection.widthProperty().multiply(0.95));
+        mediaView.fitHeightProperty().bind(videoSection.heightProperty().multiply(0.95));
+        mediaView.setPreserveRatio(true);
+
+        videoSection.getChildren().add(mediaView);
+        videoSection.setAlignment(Pos.CENTER);
+
+        return videoSection;
+    }
+
+    private void setupKeyboardHandling(Scene scene) {
         scene.setOnKeyPressed(event -> {
             switch (event.getCode()) {
+                // Call numbers
                 case NUMPAD2, DIGIT2 -> callNumber("2");
                 case NUMPAD5, DIGIT5 -> callNumber("5");
                 case NUMPAD8, DIGIT8 -> callNumber("8");
                 case NUMPAD6, DIGIT6 -> callNumber("6");
-
                 // Return numbers
                 case NUMPAD1, DIGIT1 -> returnNumber("1");
                 case NUMPAD4, DIGIT4 -> returnNumber("4");
@@ -423,16 +627,6 @@ public class ScanningRoomSystem extends Application {
                 default -> {}
             }
         });
-
-        // Configure stage
-        primaryStage.setMinWidth(1024); // Minimum width to ensure readability
-        primaryStage.setMinHeight(768); // Minimum height to ensure readability
-        primaryStage.setMaximized(true); // Start maximized
-        primaryStage.setScene(scene);
-        primaryStage.show();
-
-        // Start periodic updates
-        startPeriodicUpdates();
     }
     private String getInitialLeftInScanningText(String column) {
         return switch (column) {
