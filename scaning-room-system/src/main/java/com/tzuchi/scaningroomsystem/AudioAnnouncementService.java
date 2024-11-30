@@ -53,9 +53,8 @@ public class AudioAnnouncementService {
         thaiSequence.add(String.format("%s\\Thai-word\\queue number.mp3", BASE_PATH));
         thaiSequence.add(String.format("%s\\Category\\Category%s.mp3", BASE_PATH, category));
         addThaiNumberToSequence(thaiSequence, number);
-        thaiSequence.add(String.format("%s\\Thai-word\\please come to the.mp3", BASE_PATH));
-        thaiSequence.add(String.format("%s\\Thai-word\\screening.mp3", BASE_PATH));
-        thaiSequence.add(String.format("%s\\Thai-word\\room.mp3", BASE_PATH));
+        thaiSequence.add(String.format("%s\\Thai-word\\please come to the screening room.mp3", BASE_PATH));
+
         queueAudioSequence(thaiSequence, true);
 
         // Queue English announcement
@@ -63,9 +62,8 @@ public class AudioAnnouncementService {
         englishSequence.add(String.format("%s\\Words\\queue number.mp3", BASE_PATH));
         englishSequence.add(String.format("%s\\Category\\Category%s.mp3", BASE_PATH, category));
         addEnglishNumberToSequence(englishSequence, number);
-        englishSequence.add(String.format("%s\\Words\\please come to the.mp3", BASE_PATH));
-        englishSequence.add(String.format("%s\\Words\\screening.mp3", BASE_PATH));
-        englishSequence.add(String.format("%s\\Words\\room.mp3", BASE_PATH));
+        englishSequence.add(String.format("%s\\Words\\please come to the screening room.mp3", BASE_PATH));
+
         queueAudioSequence(englishSequence, false);
 
         if (!isPlaying) {
