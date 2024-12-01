@@ -9,6 +9,7 @@ import java.util.LinkedList;
 import java.util.List;
 import java.util.Queue;
 import javafx.util.Duration;
+import java.net.URL;
 
 import javafx.animation.PauseTransition;  // Add this import
 import javafx.animation.Timeline;         // Add this import
@@ -20,7 +21,6 @@ import java.io.File;
 import java.util.*;
 
 public class AudioAnnouncementService {
-    private static final String BASE_PATH = "C:\\Users\\tina_\\Desktop\\TzuChiAudio";
     private Queue<AudioItem> audioQueue = new LinkedList<>();
     private boolean isPlaying = false;
     private MediaPlayer currentPlayer;
@@ -50,19 +50,19 @@ public class AudioAnnouncementService {
 
         // Queue Thai announcement
         List<String> thaiSequence = new ArrayList<>();
-        thaiSequence.add(String.format("%s\\Thai-word\\queue number.mp3", BASE_PATH));
-        thaiSequence.add(String.format("%s\\Category\\Category%s.mp3", BASE_PATH, category));
+        thaiSequence.add("/audio/Thai-word/queue number.mp3");
+        thaiSequence.add(String.format("/audio/Category/Category%s.mp3", category));
         addThaiNumberToSequence(thaiSequence, number);
-        thaiSequence.add(String.format("%s\\Thai-word\\please come to the screening room.mp3", BASE_PATH));
+        thaiSequence.add("/audio/Thai-word/please come to the screening room.mp3");
 
         queueAudioSequence(thaiSequence, true);
 
         // Queue English announcement
         List<String> englishSequence = new ArrayList<>();
-        englishSequence.add(String.format("%s\\Words\\queue number.mp3", BASE_PATH));
-        englishSequence.add(String.format("%s\\Category\\Category%s.mp3", BASE_PATH, category));
+        englishSequence.add("/audio/Words/queue number.mp3");
+        englishSequence.add(String.format("/audio/Category/Category%s.mp3", category));
         addEnglishNumberToSequence(englishSequence, number);
-        englishSequence.add(String.format("%s\\Words\\please come to the screening room.mp3", BASE_PATH));
+        englishSequence.add("/audio/Words/please come to the screening room.mp3");
 
         queueAudioSequence(englishSequence, false);
 
@@ -80,7 +80,7 @@ public class AudioAnnouncementService {
 
         // Handle hundreds
         if (num >= 100) {
-            sequence.add(String.format("%s\\Thai-number\\%d.mp3", BASE_PATH, (num / 100 * 100)));
+            sequence.add(String.format("/audio/Thai-number/%d.mp3", (num / 100 * 100)));
             num %= 100;
         }
 
@@ -88,21 +88,16 @@ public class AudioAnnouncementService {
         if (num > 0) {
             if (num == 11 || num == 21 || num == 31 || num == 41 ||
                     num == 51 || num == 61 || num == 71 || num == 81 || num == 91) {
-                // Use special pronunciation for x1 numbers
-                sequence.add(String.format("%s\\Thai-number\\%d.mp3", BASE_PATH, num));
+                sequence.add(String.format("/audio/Thai-number/%d.mp3", num));
             } else {
-                // Split into tens and ones
                 int tens = (num / 10) * 10;
                 int ones = num % 10;
 
-                // Add tens if it exists
                 if (tens > 0) {
-                    sequence.add(String.format("%s\\Thai-number\\%d.mp3", BASE_PATH, tens));
+                    sequence.add(String.format("/audio/Thai-number/%d.mp3", tens));
                 }
-
-                // Add ones if it exists
                 if (ones > 0) {
-                    sequence.add(String.format("%s\\Thai-number\\%d.mp3", BASE_PATH, ones));
+                    sequence.add(String.format("/audio/Thai-number/%d.mp3", ones));
                 }
             }
         }
@@ -116,17 +111,17 @@ public class AudioAnnouncementService {
         }
 
         if (num >= 100) {
-            sequence.add(String.format("%s\\Number\\%d.mp3", BASE_PATH, (num / 100 * 100)));
+            sequence.add(String.format("/audio/Number/%d.mp3", (num / 100 * 100)));
             num %= 100;
         }
 
         if (num > 20) {
-            sequence.add(String.format("%s\\Number\\%d.mp3", BASE_PATH, (num / 10 * 10)));
+            sequence.add(String.format("/audio/Number/%d.mp3", (num / 10 * 10)));
             if (num % 10 > 0) {
-                sequence.add(String.format("%s\\Number\\%d.mp3", BASE_PATH, (num % 10)));
+                sequence.add(String.format("/audio/Number/%d.mp3", (num % 10)));
             }
         } else if (num > 0) {
-            sequence.add(String.format("%s\\Number\\%d.mp3", BASE_PATH, num));
+            sequence.add(String.format("/audio/Number/%d.mp3", num));
         }
     }
 
@@ -134,9 +129,9 @@ public class AudioAnnouncementService {
         boolean isFirstFile = true;
         for (String audioPath : audioFiles) {
             try {
-                File audioFile = new File(audioPath);
-                if (audioFile.exists()) {
-                    Media media = new Media(audioFile.toURI().toString());
+                URL resourceUrl = AudioAnnouncementService.class.getResource(audioPath);
+                if (resourceUrl != null) {
+                    Media media = new Media(resourceUrl.toString());
                     MediaPlayer player = new MediaPlayer(media);
                     player.setRate(playbackSpeed);
 
@@ -148,10 +143,10 @@ public class AudioAnnouncementService {
 
                     audioQueue.offer(new AudioItem(player, isThai, isFirstFile));
                 } else {
-                    System.err.println("Audio file not found: " + audioPath);
+                    System.err.println("Audio resource not found: " + audioPath);
                 }
             } catch (Exception e) {
-                System.err.println("Error loading audio file: " + audioPath);
+                System.err.println("Error loading audio resource: " + audioPath);
                 e.printStackTrace();
             }
             isFirstFile = false;

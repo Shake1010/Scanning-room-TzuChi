@@ -20,7 +20,6 @@ javafx {
 dependencies {
   implementation 'com.fasterxml.jackson.core:jackson-databind:2.13.0'
 
-  // Explicitly add JavaFX dependencies
   implementation "org.openjfx:javafx-base:${javaFxVersion}:win"
   implementation "org.openjfx:javafx-graphics:${javaFxVersion}:win"
   implementation "org.openjfx:javafx-controls:${javaFxVersion}:win"
@@ -39,6 +38,20 @@ tasks.withType(JavaCompile) {
   ]
 }
 
+// Add this to ensure resources are included
+processResources {
+  from('src/main/resources') {
+    include '**/*.mp3'
+  }
+}
+
+jar {
+  from {
+    configurations.runtimeClasspath.collect { it.isDirectory() ? it : zipTree(it) }
+  }
+  duplicatesStrategy = DuplicatesStrategy.EXCLUDE
+}
+
 jlink {
   options = ['--strip-debug', '--compress', '2', '--no-header-files', '--no-man-pages']
   addOptions('--bind-services')
@@ -53,22 +66,14 @@ jlink {
     requires('java.base')
     requires('java.desktop')
     requires('java.net.http')
-
-    // Don't include these in mergedModule since they'll be added by the module path
-    // requires('javafx.base')
-    // requires('javafx.graphics')
-    // requires('javafx.controls')
-    // requires('javafx.media')
   }
 
   jpackage {
-    // Image options
     installerType = 'msi'
     outputDir = 'installer'
     imageName = 'ScanningRoomSystem'
     skipInstaller = false
 
-    // Installer options
     installerName = 'ScanningRoomSystem'
     installerOptions = [
             '--win-dir-chooser',
@@ -78,17 +83,13 @@ jlink {
             '--verbose'
     ]
 
-    // App info
     appVersion = '1.0.0'
     vendor = 'TzuChi'
-//    copyright = '2024 TzuChi'
 
-    // JVM options
     jvmArgs = ['-Xms128m', '-Xmx512m']
   }
 }
 
-// Make sure module-info.java is properly set
 tasks.compileJava {
   inputs.property('moduleName', application.mainModule)
   options.compilerArgs = [
@@ -96,12 +97,10 @@ tasks.compileJava {
   ]
 }
 
-// Optional: Add a task to clean the installer directory
 task cleanInstaller(type: Delete) {
   delete "${buildDir}/installer"
 }
 
-// Make jpackage task depend on cleaning installer directory
 tasks.named('jpackage').configure {
   dependsOn(cleanInstaller)
 }
