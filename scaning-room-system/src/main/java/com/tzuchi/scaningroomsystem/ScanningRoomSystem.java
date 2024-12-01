@@ -13,9 +13,14 @@ import javafx.scene.text.FontWeight;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.fasterxml.jackson.databind.JsonNode;
 import javafx.stage.Screen;
+import java.io.File;
+import java.io.FileInputStream;
+import java.io.FileOutputStream;
+import java.io.IOException;
+import java.util.Properties;
 import com.tzuchi.scaningroomsystem.AudioAnnouncementService;
 
-
+import java.io.IOException;
 import java.net.URI;
 import java.net.http.HttpClient;
 import java.net.http.HttpRequest;
@@ -43,6 +48,8 @@ public class ScanningRoomSystem extends Application {
     private static final HttpClient HTTP_CLIENT = HttpClient.newBuilder()
             .connectTimeout(Duration.ofSeconds(10))
             .build();
+    private static final String CONFIG_FILE = "scanningroom.properties";
+    private Properties configProps;
     private static final ObjectMapper OBJECT_MAPPER = new ObjectMapper();
     private final AudioAnnouncementService audioService = new AudioAnnouncementService();
 
@@ -60,6 +67,7 @@ public class ScanningRoomSystem extends Application {
         this.primaryStage = primaryStage;
         primaryStage.setTitle("Tzu Chi Scanning Room System");
         showLoginScene();
+        loadProperties();
         // Main horizontal layout
 
     }
@@ -372,7 +380,6 @@ public class ScanningRoomSystem extends Application {
         String[] columns = {"2", "5", "8", "6"};
         for (String column : columns) {
             VBox queueDisplay = createEnhancedQueueDisplay(column);
-            // Each column takes 24% of the queue section width, leaving 1% spacing between columns
             queueDisplay.prefWidthProperty().bind(queueDisplaysContainer.widthProperty().multiply(0.24));
             queueDisplays.put(column, queueDisplay);
             queueDisplaysContainer.getChildren().add(queueDisplay);
@@ -411,6 +418,27 @@ public class ScanningRoomSystem extends Application {
         primaryStage.setMaximized(true);
         primaryStage.show();
 
+        // Try to load and play the saved video after the UI is shown
+        Platform.runLater(() -> {
+            try {
+                String lastVideoPath = configProps.getProperty("lastVideo");
+                if (lastVideoPath != null && !lastVideoPath.isEmpty()) {
+                    File videoFile = new File(lastVideoPath);
+                    if (videoFile.exists() && videoFile.isFile()) {
+                        loadAndPlayVideo(lastVideoPath);
+                        System.out.println("Successfully loaded saved video: " + lastVideoPath);
+                    } else {
+                        System.out.println("Saved video file not found: " + lastVideoPath);
+                        showError("Video Error", "Saved video file not found: " + lastVideoPath);
+                    }
+                }
+            } catch (Exception e) {
+                System.err.println("Error loading saved video: " + e.getMessage());
+                e.printStackTrace();
+                showError("Video Error", "Error loading saved video: " + e.getMessage());
+            }
+        });
+
         // Start periodic updates
         startPeriodicUpdates();
     }
@@ -437,7 +465,7 @@ public class ScanningRoomSystem extends Application {
         """);
 
         VBox titleBox = new VBox(5);
-        Label mainTitle = new Label("SCREENING ROOM");
+        Label mainTitle = new Label("CLINIC ROOM");  // Changed from SCREENING ROOM
         mainTitle.setStyle("""
         -fx-font-size: 24;
         -fx-font-weight: bold;
@@ -450,10 +478,127 @@ public class ScanningRoomSystem extends Application {
         """);
         titleBox.getChildren().addAll(mainTitle, subTitle);
 
-        header.getChildren().addAll(logoText, titleBox);
+        // Create settings button
+        Button settingsButton = new Button("Settings");
+        settingsButton.setStyle("""
+        -fx-background-color: white;
+        -fx-text-fill: rgb(22, 38, 74);
+        -fx-font-weight: bold;
+        -fx-font-size: 14;
+        -fx-padding: 8 15;
+        -fx-background-radius: 5;
+        -fx-cursor: hand;
+        """);
+
+        // Add hover effect
+        settingsButton.setOnMouseEntered(e ->
+                settingsButton.setStyle("""
+            -fx-background-color: #e0e0e0;
+            -fx-text-fill: rgb(22, 38, 74);
+            -fx-font-weight: bold;
+            -fx-font-size: 14;
+            -fx-padding: 8 15;
+            -fx-background-radius: 5;
+            -fx-cursor: hand;
+            """)
+        );
+
+        settingsButton.setOnMouseExited(e ->
+                settingsButton.setStyle("""
+            -fx-background-color: white;
+            -fx-text-fill: rgb(22, 38, 74);
+            -fx-font-weight: bold;
+            -fx-font-size: 14;
+            -fx-padding: 8 15;
+            -fx-background-radius: 5;
+            -fx-cursor: hand;
+            """)
+        );
+
+        // Add click handler for settings button
+        settingsButton.setOnAction(e -> showSettingsDialog());
+
+        // Create a spacer to push the settings button to the right
+        Region spacer = new Region();
+        HBox.setHgrow(spacer, Priority.ALWAYS);
+
+        header.getChildren().addAll(logoText, titleBox, spacer, settingsButton);
         return header;
     }
+    private void showSettingsDialog() {
+        Dialog<ButtonType> dialog = new Dialog<>();
+        dialog.setTitle("Video Settings");
+        dialog.setHeaderText("Configure Video");
 
+        // Create dialog pane
+        DialogPane dialogPane = dialog.getDialogPane();
+        dialogPane.getButtonTypes().addAll(ButtonType.OK, ButtonType.CANCEL);
+        dialogPane.setStyle("""
+        -fx-background-color: white;
+        -fx-padding: 20;
+        """);
+
+        // Create content
+        VBox content = new VBox(15);
+        content.setPadding(new Insets(10));
+
+        // Current video path display
+        VBox pathBox = new VBox(5);
+        Label pathLabel = new Label("Current Video Path:");
+        Label currentPath = new Label("No video selected");
+        currentPath.setStyle("-fx-font-style: italic;");
+        pathBox.getChildren().addAll(pathLabel, currentPath);
+
+        // Video selection controls
+        HBox controlBox = new HBox(10);
+        TextField pathField = new TextField();
+        pathField.setPromptText("Video path...");
+        pathField.setPrefWidth(300);
+
+        Button browseButton = new Button("Browse");
+        browseButton.setStyle("""
+        -fx-background-color: rgb(22, 38, 74);
+        -fx-text-fill: white;
+        -fx-padding: 5 15;
+        -fx-cursor: hand;
+        """);
+
+        browseButton.setOnAction(e -> {
+            FileChooser fileChooser = new FileChooser();
+            fileChooser.setTitle("Select Video File");
+            fileChooser.getExtensionFilters().add(
+                    new FileChooser.ExtensionFilter("Video Files", "*.mp4", "*.avi", "*.mov")
+            );
+
+            File file = fileChooser.showOpenDialog(dialog.getOwner());
+            if (file != null) {
+                pathField.setText(file.getAbsolutePath());
+            }
+        });
+
+        controlBox.getChildren().addAll(pathField, browseButton);
+        content.getChildren().addAll(pathBox, controlBox);
+        dialogPane.setContent(content);
+
+        // Handle dialog result
+        dialog.setResultConverter(buttonType -> {
+            if (buttonType == ButtonType.OK) {
+                String videoPath = pathField.getText();
+                if (!videoPath.isEmpty()) {
+                    File videoFile = new File(videoPath);
+                    if (videoFile.exists()) {
+                        loadAndPlayVideo(videoPath);
+                        return ButtonType.OK;
+                    } else {
+                        showError("Error", "Video file not found: " + videoPath);
+                    }
+                }
+            }
+            return ButtonType.CANCEL;
+        });
+
+        dialog.showAndWait();
+    }
     private VBox createEnhancedQueueDisplay(String column) {
         VBox display = new VBox();
         display.setStyle("""
@@ -1014,45 +1159,67 @@ public class ScanningRoomSystem extends Application {
             e.printStackTrace();
         }
     }
-    public void loadAndPlayVideo(String videoPath) {
+    private void loadAndPlayVideo(String videoPath) {
         try {
-            // Stop any currently playing video
             if (mediaPlayer != null) {
                 mediaPlayer.stop();
                 mediaPlayer.dispose();
             }
 
-            // Create new Media and MediaPlayer
             File videoFile = new File(videoPath);
             Media media = new Media(videoFile.toURI().toString());
             mediaPlayer = new MediaPlayer(media);
-
-            // Set the MediaPlayer to the MediaView
             mediaView.setMediaPlayer(mediaPlayer);
 
-            // Configure player settings
             mediaPlayer.setAutoPlay(true);
-            mediaPlayer.setCycleCount(MediaPlayer.INDEFINITE); // Loop video
-            mediaPlayer.setMute(true);  // Add this line to mute the video
+            mediaPlayer.setCycleCount(MediaPlayer.INDEFINITE);
+            mediaPlayer.setMute(true);
 
-            // Handle errors
+            // Save the video path to properties
+            configProps.setProperty("lastVideo", videoPath);
+            saveProperties();
+
             mediaPlayer.setOnError(() -> {
-                System.err.println("Media Player Error: " + mediaPlayer.getError());
-                showError("Video Playback Error",
-                        "Error playing video: " + mediaPlayer.getError().getMessage());
+                String errorMessage = mediaPlayer.getError().getMessage();
+                showError("Video Error", "Error playing video: " + errorMessage);
             });
 
-            // Start playback
             mediaPlayer.play();
 
         } catch (Exception e) {
-            System.err.println("Error loading video: " + e.getMessage());
-            showError("Video Loading Error",
-                    "Error loading video file: " + e.getMessage());
+            showError("Video Error", "Error loading video: " + e.getMessage());
+            e.printStackTrace();
         }
     }
 
-
+    private void loadProperties() {
+        configProps = new Properties();
+        try {
+            File configFile = new File(CONFIG_FILE);
+            if (configFile.exists()) {
+                try (FileInputStream in = new FileInputStream(configFile)) {
+                    configProps.load(in);
+                    System.out.println("Loaded properties file successfully");
+                }
+            } else {
+                // Create new properties file if it doesn't exist
+                configFile.createNewFile();
+                System.out.println("Created new properties file");
+            }
+        } catch (IOException e) {
+            System.err.println("Error loading properties: " + e.getMessage());
+            e.printStackTrace();
+        }
+    }
+    private void saveProperties() {
+        try (FileOutputStream out = new FileOutputStream(CONFIG_FILE)) {
+            configProps.store(out, "Scanning Room System Settings");
+            System.out.println("Saved properties successfully");
+        } catch (IOException e) {
+            System.err.println("Error saving properties: " + e.getMessage());
+            e.printStackTrace();
+        }
+    }
 
     public static void main(String[] args) {
         launch(args);
