@@ -1,8 +1,12 @@
 plugins {
+  id 'java'
   id 'application'
   id 'org.openjfx.javafxplugin' version '0.0.13'
   id 'org.beryx.jlink' version '2.25.0'
 }
+
+group 'com.tzuchi'
+version '1.0.0'
 
 repositories {
   mavenCentral()
@@ -12,18 +16,27 @@ ext {
   javaFxVersion = '17.0.10'
 }
 
+java {
+  sourceCompatibility = '17'
+  targetCompatibility = '17'
+}
+
 javafx {
   version = javaFxVersion
   modules = ['javafx.controls', 'javafx.media']
 }
 
 dependencies {
-  implementation 'com.fasterxml.jackson.core:jackson-databind:2.13.0'
+  implementation 'com.fasterxml.jackson.core:jackson-databind:2.14.2'
+  implementation 'com.fasterxml.jackson.core:jackson-annotations:2.14.2'
 
   implementation "org.openjfx:javafx-base:${javaFxVersion}:win"
   implementation "org.openjfx:javafx-graphics:${javaFxVersion}:win"
   implementation "org.openjfx:javafx-controls:${javaFxVersion}:win"
   implementation "org.openjfx:javafx-media:${javaFxVersion}:win"
+
+  testImplementation 'org.junit.jupiter:junit-jupiter-api:5.9.2'
+  testRuntimeOnly 'org.junit.jupiter:junit-jupiter-engine:5.9.2'
 }
 
 application {
@@ -38,18 +51,8 @@ tasks.withType(JavaCompile) {
   ]
 }
 
-// Add this to ensure resources are included
-processResources {
-  from('src/main/resources') {
-    include '**/*.mp3'
-  }
-}
-
-jar {
-  from {
-    configurations.runtimeClasspath.collect { it.isDirectory() ? it : zipTree(it) }
-  }
-  duplicatesStrategy = DuplicatesStrategy.EXCLUDE
+test {
+  useJUnitPlatform()
 }
 
 jlink {
@@ -69,32 +72,28 @@ jlink {
   }
 
   jpackage {
-    installerType = 'msi'
+    installerType = 'exe'
     outputDir = 'installer'
     imageName = 'ScanningRoomSystem'
     skipInstaller = false
 
-    installerName = 'ScanningRoomSystem'
+    appVersion = '1.0.0'
+    vendor = 'TzuChi'
+
+
     installerOptions = [
             '--win-dir-chooser',
             '--win-menu',
             '--win-shortcut',
             '--win-per-user-install',
+            '--win-menu-group', 'TzuChi',
+            '--description', 'TzuChi Scanning Room System',
+            '--vendor', 'TzuChi',
             '--verbose'
     ]
 
-    appVersion = '1.0.0'
-    vendor = 'TzuChi'
-
     jvmArgs = ['-Xms128m', '-Xmx512m']
   }
-}
-
-tasks.compileJava {
-  inputs.property('moduleName', application.mainModule)
-  options.compilerArgs = [
-          '--module-path', classpath.asPath
-  ]
 }
 
 task cleanInstaller(type: Delete) {

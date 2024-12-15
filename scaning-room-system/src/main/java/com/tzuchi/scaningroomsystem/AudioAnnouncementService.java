@@ -2,68 +2,105 @@ package com.tzuchi.scaningroomsystem;
 
 import javafx.scene.media.Media;
 import javafx.scene.media.MediaPlayer;
-
-import java.io.File;
-import java.util.ArrayList;
-import java.util.LinkedList;
-import java.util.List;
-import java.util.Queue;
+import javafx.application.Platform;
+import javafx.scene.control.TextArea;
+import javafx.scene.layout.VBox;
+import javafx.scene.control.Label;
+import java.time.LocalDateTime;
+import java.time.format.DateTimeFormatter;
+import java.util.*;
 import javafx.util.Duration;
 import java.net.URL;
-
-import javafx.animation.PauseTransition;  // Add this import
-import javafx.animation.Timeline;         // Add this import
-import javafx.application.Platform;
-
-import javafx.scene.media.Media;
-import javafx.scene.media.MediaPlayer;
-import java.io.File;
-import java.util.*;
 
 public class AudioAnnouncementService {
     private Queue<AudioItem> audioQueue = new LinkedList<>();
     private boolean isPlaying = false;
     private MediaPlayer currentPlayer;
     private double playbackSpeed = 1.1;
+    private TextArea logArea;
+    private VBox logContainer;
 
     private static final double TRIM_END_THAI = 0.1;
     private static final double TRIM_END_ENGLISH = 0.8;
     private static final double GAP_THAI = 0;
     private static final double GAP_ENGLISH = 0;
     private static final double GAP_BETWEEN_LANGUAGES = 0;
+    private static final DateTimeFormatter timeFormatter = DateTimeFormatter.ofPattern("HH:mm:ss");
 
     private static class AudioItem {
         MediaPlayer player;
         boolean isThai;
         boolean isFirst;
+        String audioPath;  // Added to store the file path for logging
 
-        AudioItem(MediaPlayer player, boolean isThai, boolean isFirst) {
+        AudioItem(MediaPlayer player, boolean isThai, boolean isFirst, String audioPath) {
             this.player = player;
             this.isThai = isThai;
             this.isFirst = isFirst;
+            this.audioPath = audioPath;
         }
     }
 
+    public AudioAnnouncementService() {
+        initializeLogUI();
+    }
+
+    private void initializeLogUI() {
+        Platform.runLater(() -> {
+            logArea = new TextArea();
+            logArea.setEditable(false);
+            logArea.setWrapText(true);
+            logArea.setPrefRowCount(10);
+            logArea.setStyle("-fx-font-family: 'Courier New'; -fx-font-size: 12px;");
+
+            Label titleLabel = new Label("Audio Announcement Log");
+            titleLabel.setStyle("-fx-font-weight: bold; -fx-font-size: 14px;");
+
+            logContainer = new VBox(5);  // 5 pixels spacing
+            logContainer.getChildren().addAll(titleLabel, logArea);
+        });
+    }
+
+    public VBox getLogContainer() {
+        return logContainer;
+    }
+
+    private void log(String message) {
+        String timestamp = LocalDateTime.now().format(timeFormatter);
+        String logMessage = String.format("[%s] %s%n", timestamp, message);
+
+        Platform.runLater(() -> {
+            if (logArea != null) {
+                logArea.appendText(logMessage);
+                // Auto-scroll to bottom
+                logArea.setScrollTop(Double.MAX_VALUE);
+            }
+        });
+    }
+
     public void announceNumber(String patientId) {
+        log("Starting announcement for patient ID: " + patientId);
         String category = String.valueOf(patientId.charAt(0));
         String number = patientId.substring(1);
 
         // Queue Thai announcement
         List<String> thaiSequence = new ArrayList<>();
-        thaiSequence.add("/audio/Thai-word/queue number.mp3");
+        thaiSequence.add("/audio/Thai-word/queue-number.mp3");
         thaiSequence.add(String.format("/audio/Category/Category%s.mp3", category));
         addThaiNumberToSequence(thaiSequence, number);
-        thaiSequence.add("/audio/Thai-word/please come to the screening room.mp3");
+        thaiSequence.add("/audio/Thai-word/please-come-to-the-scanning-room.mp3");
 
+        log("Queueing Thai announcement sequence");
         queueAudioSequence(thaiSequence, true);
 
         // Queue English announcement
         List<String> englishSequence = new ArrayList<>();
-        englishSequence.add("/audio/Words/queue number.mp3");
+        englishSequence.add("/audio/Words/queue-number.mp3");
         englishSequence.add(String.format("/audio/Category/Category%s.mp3", category));
         addEnglishNumberToSequence(englishSequence, number);
-        englishSequence.add("/audio/Words/please come to the screening room.mp3");
+        englishSequence.add("/audio/Words/please-come-to-the-scanning-room.mp3");
 
+        log("Queueing English announcement sequence");
         queueAudioSequence(englishSequence, false);
 
         if (!isPlaying) {
@@ -74,7 +111,7 @@ public class AudioAnnouncementService {
     private void addThaiNumberToSequence(List<String> sequence, String number) {
         int num = Integer.parseInt(number);
         if (num > 300) {
-            System.err.println("Number too large: " + num);
+            log("Error: Number too large: " + num);
             return;
         }
 
@@ -106,7 +143,7 @@ public class AudioAnnouncementService {
     private void addEnglishNumberToSequence(List<String> sequence, String number) {
         int num = Integer.parseInt(number);
         if (num > 300) {
-            System.err.println("Number too large: " + num);
+            log("Error: Number too large: " + num);
             return;
         }
 
@@ -139,14 +176,15 @@ public class AudioAnnouncementService {
                         Duration totalDuration = media.getDuration();
                         double trimEnd = isThai ? TRIM_END_THAI : TRIM_END_ENGLISH;
                         player.setStopTime(totalDuration.subtract(Duration.seconds(trimEnd)));
+                        log("Loaded audio file: " + audioPath);
                     });
 
-                    audioQueue.offer(new AudioItem(player, isThai, isFirstFile));
+                    audioQueue.offer(new AudioItem(player, isThai, isFirstFile, audioPath));
                 } else {
-                    System.err.println("Audio resource not found: " + audioPath);
+                    log("Error: Audio resource not found: " + audioPath);
                 }
             } catch (Exception e) {
-                System.err.println("Error loading audio resource: " + audioPath);
+                log("Error: Failed to load audio resource: " + audioPath);
                 e.printStackTrace();
             }
             isFirstFile = false;
@@ -156,6 +194,7 @@ public class AudioAnnouncementService {
     private void playNextInQueue() {
         if (audioQueue.isEmpty()) {
             isPlaying = false;
+            log("Queue completed - All announcements finished");
             return;
         }
 
@@ -163,7 +202,11 @@ public class AudioAnnouncementService {
         AudioItem audioItem = audioQueue.poll();
         currentPlayer = audioItem.player;
 
+        log("Playing: " + audioItem.audioPath +
+                (audioItem.isThai ? " (Thai)" : " (English)"));
+
         currentPlayer.setOnEndOfMedia(() -> {
+            log("Completed playing: " + audioItem.audioPath);
             currentPlayer.dispose();
             Timer timer = new Timer(true);
 
@@ -183,7 +226,7 @@ public class AudioAnnouncementService {
         });
 
         currentPlayer.setOnError(() -> {
-            System.err.println("Error playing audio: " + currentPlayer.getError());
+            log("Error playing audio: " + audioItem.audioPath + " - " + currentPlayer.getError());
             currentPlayer.dispose();
             playNextInQueue();
         });
@@ -194,6 +237,7 @@ public class AudioAnnouncementService {
     public void setPlaybackSpeed(double speed) {
         if (speed > 0) {
             playbackSpeed = speed;
+            log("Playback speed set to: " + speed);
             if (currentPlayer != null) {
                 currentPlayer.setRate(speed);
             }
@@ -207,5 +251,6 @@ public class AudioAnnouncementService {
         }
         audioQueue.clear();
         isPlaying = false;
+        log("Audio playback stopped and queue cleared");
     }
 }
